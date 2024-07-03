@@ -1,0 +1,99 @@
+---
+title: "Heatmap"
+author: Clémentine Decamps
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(minfi)
+library(gplots)
+library(ggplot2)
+library(heatmaply)
+```
+
+# Chargement des données
+
+On charge la sample sheet et les données de méthylation normalisées (objet de type GenomicRatioSet).
+
+```{r}
+path = "../data/data_analyse/"
+
+sample_sheet = readRDS(paste0(path, "sample_sheet.rds"))
+mGset_norm_flt = readRDS(paste0(path, "norm_filtered_mSet.rds"))
+mGset_norm_flt
+```
+
+# Choix des sondes
+
+Pour choisir les sondes à afficher dans la heatmap, on peut utiliser différentes méthodes.
+Par exemple, on peut choisir les sondes différentiellement méthylées entre les conditions avec un package comme DMRcate ou on peut sélectionner des sondes d'intérêt avec un apriori.
+Ici, on va utiliser la variance entre les échantillons pour sélectionner les sondes les plus variables entre les échantillons.
+
+```{r}
+#On récupère la B value des échantillons de la sample sheet
+B_val = minfi::getBeta(mGset_norm_flt)
+B_val = B_val[, sample_sheet$sample_id]
+
+#On calcule la variance de chaque sonde, puis on les ordonne de la plus variable à la moins variable
+var_by_cpg = apply(B_val, 1, var)
+var_by_cpg = var_by_cpg[order(var_by_cpg, decreasing = T)]
+```
+
+# Heatmap
+
+## Données 
+
+```{r, echo = T}
+#On commence par choisir les données : ici les 10.000 sondes les plus variables.
+data_heatmap = B_val[names(var_by_cpg[1:10000]), ]
+
+#Je mets un nom plus explicite aux échantillons, ici un chiffre suivi du type de tumeur 
+colnames(data_heatmap) = paste0(1:ncol(data_heatmap), sample_sheet$tumor_type)
+
+#Pour le choix des couleurs on utilise le type de tumeur
+groups_tumor = factor(sample_sheet$tumor_type)
+#On tire une couleur par tumeur 
+colSide <- rainbow(length(levels(groups_tumor)))[groups_tumor]
+colMain <- colorRampPalette(c("red", "white", "blue"))(256)
+```
+
+## Heatmap statique 
+
+Plusieurs packages permettent de faire le clustering hiérarchique et de visualiser la heatmap.
+Ici on utilise qplots pour avoir une heatmap statique.
+
+```{r, echo = T}
+
+gplots::heatmap.2(data_heatmap, scale = "none", ColSideColors = colSide, col = colMain,
+          trace = "none", density.info = "none", dendrogram = "column")
+```
+
+## Heatmap interactive 
+
+Avec heatmaply on peut faire une heatmap interactive (en html), mais il faut un set de sondes réduit, par exemple les 100 premières : 
+
+```{r, echo = T}
+p = heatmaply::heatmaply(data_heatmap[1:100, ], 
+        dendrogram = "column",
+        xlab = "", ylab = "", 
+        col = colMain,
+        main = "",
+        scale = "column",
+        margins = c(60,100,40,20),
+        #grid_color = "white",
+        grid_width = 0.00001,
+        titleX = FALSE,
+        hide_colorbar = TRUE,
+        branches_lwd = 0.1,
+        fontsize_row = 5, fontsize_col = 5,
+        labCol = colnames(data_heatmap),
+        labRow = rownames(data_heatmap)[1:100],
+        heatmap_layers = theme(axis.line=element_blank()),
+        ColSideColors = colSide
+        )
+p
+```
